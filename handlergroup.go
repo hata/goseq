@@ -1,3 +1,13 @@
+/*
+   Package sequence is to run small tasks sequencially using Goroutine.
+
+   The current version of Go language cannot use generic type without type
+   assertion. So, this library doesn't manage efficient usage for context
+   instances. Instead of using a context instance, this library provides
+   'index' value to use a cache index. The provided index is
+   generated based on configured 'size' parameter for TaskManager and
+   it is reused after finishing a previous task which uses 'index'.
+*/
 package sequence
 
 import (
@@ -10,7 +20,13 @@ const (
 	stopAllHandlerGroups        = -2
 )
 
+// HandlerGroup is to manage several TaskHandler instances.
+// Added TaskHandlers are run at the same time when a new
+// SequenceID is put. After finishing all tasks for the SequenceID,
+// then next HandlerGroups are received the finished SequenceID.
 type HandlerGroup interface {
+	AddHandler(handler TaskHandler, handlers ...TaskHandler)
+	AddHandlers(handlers []TaskHandler)
 	Then(handler TaskHandler, handlers ...TaskHandler) HandlerGroup
 	LastProcessedID() SequenceID
 
@@ -22,12 +38,12 @@ type HandlerGroup interface {
 	waitStopAll()
 
 	process(id SequenceID)
-	addHandler(handler TaskHandler)
-	addHandlers(handler TaskHandler, handlers ...TaskHandler)
 	addNextGroup(nextGroup HandlerGroup)
 	addNextGroups(nextGroup HandlerGroup, nextGroups ...HandlerGroup)
 
 	lastHandlerGroups() []HandlerGroup
+
+	numOfHandlers() int
 }
 
 type handlerGroup struct {
@@ -37,21 +53,17 @@ type handlerGroup struct {
 	inChannels      []chan SequenceID
 	outChannels     []chan SequenceID
 	lastProcessedID Sequence
-	seqToIndexFunc  SequenceIDToIndexFunc
+	seqToIndexFunc  sequenceIDToIndexFunc
 	waitingStart    sync.WaitGroup
 	waitingStop     sync.WaitGroup
 }
 
-func NewHandlerGroup() HandlerGroup {
-	return newHandlerGroup()
-}
-
-func newHandlerGroup() (group *handlerGroup) {
+func newHandlerGroup(toIndexFunc sequenceIDToIndexFunc) (group *handlerGroup) {
 	group = new(handlerGroup)
 	group.handlers = make([]TaskHandler, 0, 2)
 	group.nextGroups = make([]HandlerGroup, 0, 2)
 	group.lastProcessedID = NewSequence()
-	group.seqToIndexFunc = SequenceIDToIndexFuncImpl
+	group.seqToIndexFunc = toIndexFunc
 	return
 }
 
@@ -61,12 +73,16 @@ func (group *handlerGroup) process(id SequenceID) {
 	}
 }
 
-func (group *handlerGroup) addHandler(handler TaskHandler) {
+// Add a TaskHandler or some TaskHandlers.
+func (group *handlerGroup) AddHandler(handler TaskHandler, handlers ...TaskHandler) {
 	group.handlers = append(group.handlers, handler)
+	if len(handlers) > 0 {
+		group.handlers = append(group.handlers, handlers...)
+	}
 }
 
-func (group *handlerGroup) addHandlers(handler TaskHandler, handlers ...TaskHandler) {
-	group.handlers = append(group.handlers, handler)
+// Add TaskHandlers from an slice of TaskHandler.
+func (group *handlerGroup) AddHandlers(handlers []TaskHandler) {
 	if handlers != nil {
 		group.handlers = append(group.handlers, handlers...)
 	}
@@ -178,13 +194,22 @@ func (group *handlerGroup) lastHandlerGroups() []HandlerGroup {
 	return groups
 }
 
+func (group *handlerGroup) numOfHandlers() int {
+	return len(group.handlers)
+}
+
+// Create a new HandlerGroup and then add new TaskHandler instances to the
+// new HandlerGroup. And then return the new handler. This new added handlers
+// are run after running current(group instance) HandlerGroup's TaskHandlers.
 func (group *handlerGroup) Then(handler TaskHandler, handlers ...TaskHandler) HandlerGroup {
-	newGroup := newHandlerGroup()
-	newGroup.addHandlers(handler, handlers...)
+	newGroup := newHandlerGroup(group.seqToIndexFunc)
+	newGroup.AddHandler(handler, handlers...)
 	group.addNextGroups(newGroup)
 	return newGroup
 }
 
+// Get finished SequenceID. The returned value means that all tasks are finished
+// for the specific returned value or more smaller SequenceIDs.
 func (group *handlerGroup) LastProcessedID() SequenceID {
 	return group.lastProcessedID.Get()
 }

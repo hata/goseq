@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+const (
+	defaultIndexSize = 1024
+)
+
 func TestNewTaskManager(t *testing.T) {
 	tm := NewTaskManager(defaultIndexSize)
 	if tm == nil {
@@ -24,12 +28,16 @@ func TestAddHandler(t *testing.T) {
 	tm := newTaskManager(defaultIndexSize)
 	f := func(id SequenceID, index int) {}
 	tm.AddHandler(f)
-	if len(tm.handlerGroups) != 1 {
+	if len(tm.handlerGroups) != 1 || tm.handlerGroups[0].numOfHandlers() != 1 {
+		t.Error("AddHandler failed to add a new task. len(ct.handlerGroups):", len(tm.handlerGroups))
+	}
+	tm.AddHandler(f, f)
+	if len(tm.handlerGroups) != 2 || tm.handlerGroups[1].numOfHandlers() != 2 {
 		t.Error("AddHandler failed to add a new task. len(ct.handlerGroups):", len(tm.handlerGroups))
 	}
 }
 
-func TestAddHandlers(t *testing.T) {
+func TestAddHandlerForSomeHandlers(t *testing.T) {
 	tm := newTaskManager(defaultIndexSize)
 	f := func(id SequenceID, index int) {}
 	for i := 0; i < 10; i++ {
@@ -40,7 +48,20 @@ func TestAddHandlers(t *testing.T) {
 	}
 }
 
-func TestPutTask(t *testing.T) {
+func TestAddHandlers(t *testing.T) {
+	tm := newTaskManager(defaultIndexSize)
+	f := func(id SequenceID, index int) {}
+	handlers := make([]TaskHandler, 10, 10)
+	for i := 0; i < 10; i++ {
+		handlers[i] = f
+	}
+	tm.AddHandlers(handlers)
+	if len(tm.handlerGroups) != 1 || tm.handlerGroups[0].numOfHandlers() != 10 {
+		t.Error("AddHandler cannot add several tasks to a group.", len(tm.handlerGroups))
+	}
+}
+
+func TestPut(t *testing.T) {
 	tm := newTaskManager(2)
 	value := -1
 	currentID := -1
@@ -48,15 +69,15 @@ func TestPutTask(t *testing.T) {
 		currentID = int(id)
 		value = index
 	}
-	tm.PutTask(f)
+	tm.Put(f)
 	if value != 0 || currentID != 0 {
-		t.Error("PutTask should call initialier and set index.")
+		t.Error("Put should call initialier and set index.")
 	}
-	tm.PutTask(f)
+	tm.Put(f)
 	if value != 1 || currentID != 1 {
-		t.Error("PutTask should call initializer and set a new index.")
+		t.Error("Put should call initializer and set a new index.")
 	}
-	tm.PutTask(f)
+	tm.Put(f)
 	if value != 0 || currentID != 2 {
 		t.Error("handler's index should be less than size.")
 	}
@@ -71,7 +92,7 @@ func TestBasicBehavior(t *testing.T) {
 	tm := NewTaskManager(defaultIndexSize)
 	tm.AddHandler(f)
 	tm.Start()
-	tm.PutTask(nil)
+	tm.Put(nil)
 	tm.Stop()
 	if count != 1 {
 		t.Error("TaskManager behavior has a problem. count:", count)
@@ -94,8 +115,8 @@ func TestSomeHandlersBehavior(t *testing.T) {
 	tm.AddHandler(f)
 	tm.AddHandler(f)
 	tm.Start()
-	tm.PutTask(nil)
-	tm.PutTask(nil)
+	tm.Put(nil)
+	tm.Put(nil)
 	tm.Stop()
 
 	if count != 10 {
@@ -103,7 +124,7 @@ func TestSomeHandlersBehavior(t *testing.T) {
 	}
 }
 
-func TestWaitingPutTask(t *testing.T) {
+func TestWaitingPut(t *testing.T) {
 	values := make([]int, 4, 4)
 	handler := func(id SequenceID, index int) {
 		time.Sleep(10)
@@ -114,7 +135,7 @@ func TestWaitingPutTask(t *testing.T) {
 	tm.AddHandler(handler)
 	tm.Start()
 	for i := 0; i < 10; i++ {
-		tm.PutTask(func(id SequenceID, index int) {
+		tm.Put(func(id SequenceID, index int) {
 			values[index] = 0
 		})
 	}
@@ -136,13 +157,13 @@ func BenchmarkHandler(b *testing.B) {
 	tm.AddHandler(f)
 	tm.Start()
 	for i := 0; i < 1000000; i++ {
-		tm.PutTask(nil)
+		tm.Put(nil)
 	}
 	tm.Stop()
 }
 
-func BenchmarkPutTask(b *testing.B) {
-	count := 500000
+func BenchmarkPut(b *testing.B) {
+	count := 100000
 	values := make([]int, defaultIndexSize)
 	handler := func(id SequenceID, index int) {
 		values[index] += 1
@@ -151,7 +172,7 @@ func BenchmarkPutTask(b *testing.B) {
 	tm.AddHandler(handler).Then(handler).Then(handler)
 	tm.Start()
 	for i := 0; i < count; i++ {
-		tm.PutTask(func(id SequenceID, index int) {
+		tm.Put(func(id SequenceID, index int) {
 			values[index] = 0
 		})
 	}

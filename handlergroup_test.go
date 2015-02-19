@@ -6,15 +6,13 @@ import (
 	"time"
 )
 
-func TestNewHandlerGroup(t *testing.T) {
-	group := NewHandlerGroup()
-	if group == nil {
-		t.Error("Fail to create HandlerGroup")
-	}
+func sampleToIndexFunc(id SequenceID) (index int) {
+	index = 0xff & int(id)
+	return
 }
 
 func TestNewHandlerGroupStruct(t *testing.T) {
-	group := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
 	if group.handlers == nil {
 		t.Error("handlers should be initialized.")
 	}
@@ -25,31 +23,39 @@ func TestNewHandlerGroupStruct(t *testing.T) {
 		t.Error("lastProcessedID should be initialized.")
 	}
 	if group.seqToIndexFunc == nil {
-		t.Error("seqToIndexFunc should be initialized.")
+		t.Error("seqToIndexFunc should not be nil.")
 	}
 }
 
 func TestAddHandlerHandlerGroup(t *testing.T) {
-	group := newHandlerGroup()
-	group.addHandler(func(id SequenceID, index int) {})
+	group := newHandlerGroup(sampleToIndexFunc)
+	f := func(id SequenceID, index int) {}
+	group.AddHandler(f)
 	if len(group.handlers) != 1 {
-		t.Error("addHandler should add a new handler.")
+		t.Error("AddHandler should add a new handler.")
+	}
+	group.AddHandler(f, f)
+	if len(group.handlers) != 3 {
+		t.Error("AddHandler can add some tasks.")
 	}
 }
 
 func TestAddhandlersHandlerGroups(t *testing.T) {
-	group := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
 	f := func(id SequenceID, index int) {}
-	group.addHandlers(f)
-	group.addHandlers(f, f, f)
+	handlers := make([]TaskHandler, 4, 4)
+	for i := range handlers {
+		handlers[i] = f
+	}
+	group.AddHandlers(handlers)
 	if len(group.handlers) != 4 {
-		t.Error("addHandlers should have added handlers.")
+		t.Error("AddHandlers should have added handlers.")
 	}
 }
 
 func TestAddNextGroup(t *testing.T) {
-	group := newHandlerGroup()
-	group2 := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
+	group2 := newHandlerGroup(sampleToIndexFunc)
 
 	group.addNextGroup(group2)
 	if len(group.nextGroups) != 1 {
@@ -58,10 +64,10 @@ func TestAddNextGroup(t *testing.T) {
 }
 
 func TestAddNextGroups(t *testing.T) {
-	group := newHandlerGroup()
-	group2 := newHandlerGroup()
-	group3 := newHandlerGroup()
-	group4 := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
+	group2 := newHandlerGroup(sampleToIndexFunc)
+	group3 := newHandlerGroup(sampleToIndexFunc)
+	group4 := newHandlerGroup(sampleToIndexFunc)
 
 	group.addNextGroups(group2)
 	group.addNextGroups(group3, group4)
@@ -71,9 +77,9 @@ func TestAddNextGroups(t *testing.T) {
 }
 
 func TestStartAndStop(t *testing.T) {
-	group := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
 	handler := func(id SequenceID, index int) {}
-	group.addHandler(handler)
+	group.AddHandler(handler)
 	group.start()
 	group.process(1)
 	group.stop()
@@ -83,11 +89,11 @@ func TestStartAndStop(t *testing.T) {
 }
 
 func TestStartAllAndStopAll(t *testing.T) {
-	group := newHandlerGroup()
-	group2 := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
+	group2 := newHandlerGroup(sampleToIndexFunc)
 	handler := func(id SequenceID, index int) {}
-	group.addHandler(handler)
-	group2.addHandler(handler)
+	group.AddHandler(handler)
+	group2.AddHandler(handler)
 	group.addNextGroup(group2)
 	group.startAll()
 	group.process(1)
@@ -104,13 +110,13 @@ func TestStartAllAndStopAll(t *testing.T) {
 func TestProcess(t *testing.T) {
 	var m sync.Mutex
 	count := 0
-	group := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
 	handler := func(id SequenceID, index int) {
 		m.Lock()
 		defer m.Unlock()
 		count++
 	}
-	group.addHandler(handler)
+	group.AddHandler(handler)
 	group.start()
 	group.process(1)
 	group.process(2)
@@ -126,7 +132,7 @@ func TestProcess(t *testing.T) {
 }
 
 func TestLastHandlerGroups(t *testing.T) {
-	group := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
 	lastGroups := group.lastHandlerGroups()
 	if len(lastGroups) != 1 || lastGroups[0] != group {
 		t.Error("lastHandlerGroups() returns self when there is no nextGroups.")
@@ -134,8 +140,8 @@ func TestLastHandlerGroups(t *testing.T) {
 }
 
 func TestLastHandlerGroupsReturnNextGroup(t *testing.T) {
-	group := newHandlerGroup()
-	group2 := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
+	group2 := newHandlerGroup(sampleToIndexFunc)
 	group.addNextGroup(group2)
 	lastGroups := group.lastHandlerGroups()
 	if len(lastGroups) != 1 || lastGroups[0] != group2 {
@@ -144,11 +150,11 @@ func TestLastHandlerGroupsReturnNextGroup(t *testing.T) {
 }
 
 func TestLastHandlerGroupsReturnSomeGroups(t *testing.T) {
-	group := newHandlerGroup()
-	group2 := newHandlerGroup()
-	group3 := newHandlerGroup()
-	group4 := newHandlerGroup()
-	group5 := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
+	group2 := newHandlerGroup(sampleToIndexFunc)
+	group3 := newHandlerGroup(sampleToIndexFunc)
+	group4 := newHandlerGroup(sampleToIndexFunc)
+	group5 := newHandlerGroup(sampleToIndexFunc)
 	group.addNextGroups(group2, group3)
 	group2.addNextGroups(group4, group5)
 	lastGroups := group.lastHandlerGroups()
@@ -163,13 +169,13 @@ func TestLastHandlerGroupsReturnSomeGroups(t *testing.T) {
 func TestSomeHandlers(t *testing.T) {
 	var m sync.Mutex
 	count := 0
-	group := newHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
 	handler := func(id SequenceID, index int) {
 		m.Lock()
 		defer m.Unlock()
 		count++
 	}
-	group.addHandlers(handler, handler, handler, handler, handler)
+	group.AddHandler(handler, handler, handler, handler, handler)
 	group.start()
 	group.process(0)
 	group.process(1)
@@ -190,21 +196,21 @@ func TestSomeHandlersAndSomeNextGroups(t *testing.T) {
 		count++
 	}
 
-	group1 := newHandlerGroup()
+	group1 := newHandlerGroup(sampleToIndexFunc)
 	group1.name = "group1"
-	group1.addHandlers(handler)
-	group2 := newHandlerGroup()
+	group1.AddHandler(handler)
+	group2 := newHandlerGroup(sampleToIndexFunc)
 	group2.name = "group2"
-	group2.addHandlers(handler, handler)
-	group3 := newHandlerGroup()
+	group2.AddHandler(handler, handler)
+	group3 := newHandlerGroup(sampleToIndexFunc)
 	group3.name = "group3"
-	group3.addHandlers(handler, handler, handler)
-	group4 := newHandlerGroup()
+	group3.AddHandler(handler, handler, handler)
+	group4 := newHandlerGroup(sampleToIndexFunc)
 	group4.name = "group4"
-	group4.addHandlers(handler, handler, handler, handler)
-	group5 := newHandlerGroup()
+	group4.AddHandler(handler, handler, handler, handler)
+	group5 := newHandlerGroup(sampleToIndexFunc)
 	group5.name = "group5"
-	group5.addHandlers(handler, handler, handler, handler, handler)
+	group5.AddHandler(handler, handler, handler, handler, handler)
 
 	group1.addNextGroup(group2)
 	group1.addNextGroup(group3)
@@ -245,12 +251,12 @@ func TestSomeHandlersAndSomeNextGroups(t *testing.T) {
 }
 
 func BenchmarkProcess(b *testing.B) {
-	group := NewHandlerGroup()
+	group := newHandlerGroup(sampleToIndexFunc)
 	seq := NewSequence()
 	handler := func(id SequenceID, index int) {
 		index++
 	}
-	group.addHandler(handler)
+	group.AddHandler(handler)
 	group.start()
 	for i := 0; i < 1000000; i++ {
 		group.process(seq.Next())
@@ -266,8 +272,8 @@ func BenchmarkSomeGroups(b *testing.B) {
 	}
 	var previousGroup HandlerGroup
 	for i, _ := range groups {
-		groups[i] = NewHandlerGroup()
-		groups[i].addHandlers(handler, handler)
+		groups[i] = newHandlerGroup(sampleToIndexFunc)
+		groups[i].AddHandler(handler, handler)
 		if previousGroup != nil {
 			previousGroup.addNextGroup(groups[i])
 		}

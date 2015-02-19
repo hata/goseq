@@ -5,23 +5,32 @@ import (
 )
 
 const (
-	initialTasksCap  = 4
-	defaultIndexSize = 1024
+	initialTasksCap = 4
 )
 
+// This type is defined acceptable function. 1st argument is to set
+// a current SequenceID and 2nd 'index' value is to generate from
+// 'id' value. index is between 0 and (size -1).
 type TaskHandler func(id SequenceID, index int)
-type SequenceIDToIndexFunc func(id SequenceID) (index int)
 
+// Manage several TaskHandlers.
+// Create a new instance using NewTaskManager() and then
+// add TaskHandlers. And then, call Start() method to setup
+// channels for each handlers. After that, call PutTask
+// to initiate a new SequenceID and run tasks.
+// Current version can support a single thread to call Put method.
 type TaskManager interface {
-	PutTask(initHandler TaskHandler) SequenceID
-	AddHandler(handler TaskHandler) HandlerGroup
-	AddHandlers(handler TaskHandler, handlers ...TaskHandler) HandlerGroup
+	Put(initHandler TaskHandler) SequenceID
+	AddHandler(handler TaskHandler, handlers ...TaskHandler) HandlerGroup
+	AddHandlers(handlers []TaskHandler) HandlerGroup
 	Start()
 	Stop()
 }
 
+type sequenceIDToIndexFunc func(id SequenceID) (index int)
+
 type taskManager struct {
-	seqToIndexFunc      SequenceIDToIndexFunc
+	seqToIndexFunc      sequenceIDToIndexFunc
 	handlerGroups       []HandlerGroup
 	size                SequenceID
 	indexMask           SequenceID
@@ -29,12 +38,8 @@ type taskManager struct {
 	cachedMinSequenceID SequenceID
 }
 
-func SequenceIDToIndexFuncImpl(id SequenceID) (index int) {
-	return int((defaultIndexSize - 1) & int64(id))
-}
-
 // Create a new TaskManager instance.
-// size should be pow2 like 2,4,8,16, ...
+// size is required to set 2^x like 2,4,8,16, ...
 func NewTaskManager(size int) TaskManager {
 	return newTaskManager(size)
 }
@@ -52,8 +57,12 @@ func newTaskManager(size int) (tm *taskManager) {
 	return
 }
 
-// Support single thread only.
-func (tm *taskManager) PutTask(initHandler TaskHandler) SequenceID {
+// This method gets a new SequenceID and then call initHandler to initialize
+// for the new SequenceID/index parameters. And then start calling TaskHandlers
+// in different Goroutine. Current method can support only for a single thread
+// usage to call this method. If 'index' is still used, then this method
+// block the call until 'index' becomes available state.
+func (tm *taskManager) Put(initHandler TaskHandler) SequenceID {
 	current := tm.currentID
 	nextID := current + 1
 	wrapPoint := nextID - tm.size
@@ -89,24 +98,30 @@ func (tm *taskManager) put(id SequenceID) {
 	}
 }
 
-func (tm *taskManager) AddHandler(handler TaskHandler) HandlerGroup {
-	return tm.AddHandlers(handler)
-}
-
-func (tm *taskManager) AddHandlers(handler TaskHandler, handlers ...TaskHandler) HandlerGroup {
-	group := newHandlerGroup()
-	group.seqToIndexFunc = tm.seqToIndexFunc
-	group.addHandlers(handler, handlers...)
+func (tm *taskManager) AddHandler(handler TaskHandler, handlers ...TaskHandler) HandlerGroup {
+	group := newHandlerGroup(tm.seqToIndexFunc)
+	if handler != nil {
+		group.AddHandler(handler)
+	}
+	if len(handlers) > 0 {
+		group.AddHandlers(handlers)
+	}
 	tm.handlerGroups = append(tm.handlerGroups, group)
 	return group
 }
 
+func (tm *taskManager) AddHandlers(handlers []TaskHandler) HandlerGroup {
+	return tm.AddHandler(nil, handlers...)
+}
+
+// Start all configured channels. Don't add new handlers/groups after starting handlers.
 func (tm *taskManager) Start() {
 	for _, group := range tm.handlerGroups {
 		group.startAll()
 	}
 }
 
+// Stop all configured channels. This is blocked until finishing all goroutines.
 func (tm *taskManager) Stop() {
 	for _, group := range tm.handlerGroups {
 		group.stopAll()
