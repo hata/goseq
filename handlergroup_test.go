@@ -1,4 +1,4 @@
-package sequence
+package goseq
 
 import (
 	"sync"

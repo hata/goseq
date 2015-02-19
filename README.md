@@ -1,19 +1,19 @@
-# Sequence
+# GOSEQ
 
-The Go library to run sequential tasks
+The Go library to run SEQuential tasks
 
 # Usage
 
 Get library
 
 ```
-  $ git get github.com/hata/sequence
+  $ git get github.com/hata/goseq
 ```
 
 Then import in your code
 
 ```
-  import "sequence"
+  import "goseq"
 ```
 
 

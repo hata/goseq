@@ -8,7 +8,7 @@
    generated based on configured 'size' parameter for TaskManager and
    it is reused after finishing a previous task which uses 'index'.
 */
-package sequence
+package goseq
 
 import (
 	"sync"
