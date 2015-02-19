@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	channelBufferSize           = 128
+	channelBufferSize           = 256
 	stopCurrentHandlerGroupOnly = -1
 	stopAllHandlerGroups        = -2
 )
@@ -173,6 +173,17 @@ func (group *handlerGroup) stopAll() {
 
 func (group *handlerGroup) waitStop() {
 	group.waitingStop.Wait()
+	defer func() {
+		group.inChannels = nil
+		group.outChannels = nil
+	}()
+
+	for _,ch := range group.inChannels {
+		close(ch)
+	}
+	for _, ch := range group.outChannels {
+		close(ch)
+	}
 }
 
 func (group *handlerGroup) waitStopAll() {

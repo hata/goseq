@@ -86,6 +86,12 @@ func TestStartAndStop(t *testing.T) {
 	if group.LastProcessedID() != 1 {
 		t.Error("start/stop didn't process a request.")
 	}
+	if group.inChannels != nil {
+		t.Error("stop should close and clean inChannels.")
+	}
+	if group.outChannels != nil {
+		t.Error("stop should close and clean outChannels.")
+	}
 }
 
 func TestStartAllAndStopAll(t *testing.T) {
@@ -104,6 +110,18 @@ func TestStartAllAndStopAll(t *testing.T) {
 	}
 	if group2.LastProcessedID() != 1 {
 		t.Error("StartAll/StopAll didn't propagate to a next group.")
+	}
+	if group.inChannels != nil {
+		t.Error("stop should close and clean inChannels.")
+	}
+	if group.outChannels != nil {
+		t.Error("stop should close and clean outChannels.")
+	}
+	if group2.inChannels != nil {
+		t.Error("stop should close and clean inChannels.")
+	}
+	if group2.outChannels != nil {
+		t.Error("stop should close and clean outChannels.")
 	}
 }
 
