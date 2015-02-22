@@ -156,7 +156,8 @@ func BenchmarkHandler(b *testing.B) {
 	tm := NewTaskManager(defaultIndexSize)
 	tm.AddHandler(f)
 	tm.Start()
-	for i := 0; i < 1000000; i++ {
+	b.ResetTimer()
+	for i := 0; i < 100000; i++ {
 		tm.Put(nil)
 	}
 	tm.Stop()
@@ -171,6 +172,7 @@ func BenchmarkPut(b *testing.B) {
 	tm := NewTaskManager(defaultIndexSize)
 	tm.AddHandler(handler).Then(handler).Then(handler)
 	tm.Start()
+	b.ResetTimer()
 	for i := 0; i < count; i++ {
 		tm.Put(func(id SequenceID, index int) {
 			values[index] = 0

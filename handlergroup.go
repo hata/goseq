@@ -11,11 +11,12 @@
 package goseq
 
 import (
+	"runtime"
 	"sync"
 )
 
 const (
-	channelBufferSize           = 256
+	channelBufferSize           = 512
 	stopCurrentHandlerGroupOnly = -1
 	stopAllHandlerGroups        = -2
 )
@@ -110,6 +111,7 @@ func (group *handlerGroup) processHandler(handler TaskHandler, inChannel <-chan 
 		}
 		handler(id, group.seqToIndexFunc(id))
 		outChannel <- id
+		runtime.Gosched()
 	}
 }
 
@@ -178,7 +180,7 @@ func (group *handlerGroup) waitStop() {
 		group.outChannels = nil
 	}()
 
-	for _,ch := range group.inChannels {
+	for _, ch := range group.inChannels {
 		close(ch)
 	}
 	for _, ch := range group.outChannels {

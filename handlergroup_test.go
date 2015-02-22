@@ -276,7 +276,8 @@ func BenchmarkProcess(b *testing.B) {
 	}
 	group.AddHandler(handler)
 	group.start()
-	for i := 0; i < 1000000; i++ {
+	b.ResetTimer()
+	for i := 0; i < 100000; i++ {
 		group.process(seq.Next())
 	}
 	group.stop()
@@ -299,7 +300,8 @@ func BenchmarkSomeGroups(b *testing.B) {
 	}
 
 	groups[0].startAll()
-	for i := 0; i < 100000; i++ {
+	b.ResetTimer()
+	for i := 0; i < 10000; i++ {
 		groups[0].process(seq.Next())
 	}
 	groups[0].stopAll()
