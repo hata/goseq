@@ -62,8 +62,13 @@ func (ex *executor) startWorkers() {
 }
 
 func (ex *executor) Stop() {
-	for i := 0; i < ex.max; i++ {
+	for i := 0;i < ex.max;i++ {
 		ex.jobIndexChannel <- closeExecutorIndex
+	}
+	close(ex.jobIndexChannel)
+	close(ex.freeJobIndexChannel)
+	for i := range ex.jobs {
+		ex.jobs[i] = nil
 	}
 	ex.waitingStop.Wait()
 }
@@ -80,6 +85,7 @@ func (ex *executor) startWorker(newJobIndexChannel <-chan int, resultChannel cha
 	for {
 		jobIndex := <-newJobIndexChannel
 		if jobIndex < 0 {
+			close(resultChannel)
 			break
 		}
 		f := newFuture()
