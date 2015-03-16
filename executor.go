@@ -1,6 +1,9 @@
 package goseq
 
-import "sync"
+import (
+	"sync"
+)
+
 
 const (
 	closeExecutorIndex = -1
@@ -55,8 +58,8 @@ func (ex *executor) startWorkers() {
 	ex.freeJobIndexChannel = make(chan int, ex.max)
 	ex.waitingStop.Add(ex.max)
 	for i := 0; i < ex.max; i++ {
-		ex.resultChannels[i] = make(chan Future)
-		go ex.startWorker(ex.jobIndexChannel, ex.resultChannels[i])
+		ex.resultChannels[i] = make(chan Future, 1)
+		go ex.startWorker()
 		ex.freeJobIndexChannel <- i
 	}
 }
@@ -70,6 +73,9 @@ func (ex *executor) Stop() {
 	for i := range ex.jobs {
 		ex.jobs[i] = nil
 	}
+	for _,ch := range ex.resultChannels {
+		close(ch)
+	}
 	ex.waitingStop.Wait()
 }
 
@@ -80,16 +86,15 @@ func newFuture() (f *future) {
 	return f
 }
 
-func (ex *executor) startWorker(newJobIndexChannel <-chan int, resultChannel chan Future) {
+func (ex *executor) startWorker() {
 	defer ex.waitingStop.Done()
 	for {
-		jobIndex := <-newJobIndexChannel
+		jobIndex := <- ex.jobIndexChannel
 		if jobIndex < 0 {
-			close(resultChannel)
 			break
 		}
 		f := newFuture()
-		resultChannel <- f
+		ex.resultChannels[jobIndex] <- f
 		f.result, f.err = ex.jobs[jobIndex]()
 		f.waitChannel <- true
 		close(f.waitChannel)
